@@ -218,6 +218,7 @@ class Runner(ABC):
         timescale: Optional[Tuple[str, str]] = None,
         waves: bool = False,
         log_file: Optional[PathLike] = None,
+        dumpfile_path: Optional[PathLike] = None,
     ) -> None:
         """Build the HDL sources.
 
@@ -269,6 +270,9 @@ class Runner(ABC):
             timescale: Tuple containing time unit and time precision for simulation.
             waves: Record signal traces.
             log_file: File to write the build log to.
+            dumpfile_path: Path to dump waves to. For Icarus only - Icarus determines
+                wave dump location at build time, for other simulators it is
+                determined at test time.
 
         .. deprecated:: 2.0
 
@@ -312,6 +316,14 @@ class Runner(ABC):
         self.log_file: Optional[PathLike] = log_file
 
         self.waves = waves
+
+        if dumpfile_path is not None and not isinstance(self, Icarus):
+            warnings.warn(
+                "Simulator.build *dumpfile_path* parameter is only supported by Icarus.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        self.dumpfile_path = dumpfile_path
 
         self.env.update(os.environ)
 
@@ -662,11 +674,12 @@ class Icarus(Runner):
             f.write("+timescale+{}/{}\n".format(*self.timescale))
 
     def _create_iverilog_dump_file(self) -> None:
-        dumpfile_path = Path(self.build_dir, f"{self.hdl_toplevel}.fst").as_posix()
+        if self.dumpfile_path is None:
+            self.dumpfile_path = Path(self.build_dir, f"{self.hdl_toplevel}.fst").as_posix()
         with open(self.iverilog_dump_file, "w") as f:
             f.write("module cocotb_iverilog_dump();\n")
             f.write("initial begin\n")
-            f.write(f'    $dumpfile("{dumpfile_path}");\n')
+            f.write(f'    $dumpfile("{self.dumpfile_path}");\n')
             f.write(f"    $dumpvars(0, {self.hdl_toplevel});\n")
             f.write("end\n")
             f.write("endmodule\n")
